@@ -1,2 +1,2 @@
 # cyp-random
-Example Cyckei Plugin Package, Generates Random Numbers
+Cyckei Plugin Package, Reads Temperature from Pico TC-08 Thermocouples
