@@ -2,14 +2,14 @@ import setuptools
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
-des = "Cyckei Plugin Package, Reads Temperature from Pico TC-08 Thermocouples"
+shrt = "Cyckei Plugin Package, Reads Temperature from Pico TC-08 Thermocouples"
 
 setuptools.setup(
     name="cyp-pico-tc08",
     version="0.1.dev1",
     author="Gabriel Ewig",
     author_email="gabriel@cyclikal.com",
-    description=des,
+    description=shrt,
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/cyclikal/cyp-random",
