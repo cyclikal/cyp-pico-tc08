@@ -5,10 +5,8 @@ from cyckei.plugins import cyp_base
 from picosdk.usbtc08 import usbtc08
 from picosdk.errors import PicoSDKCtypesError
 
-logger = logging.getLogger("cyckei")
-
-# Configuration should be loaded from a file, optionally.
-# Set default hermocouple type, must be consistent.
+# Configuration should be loaded from a file, optionally, in the future
+# Set default hermocouple type, must be consistent
 thermocouple_type = "K"
 # Different thermocouple types need to be specified when reading
 thermocouple_type_map = {
@@ -34,7 +32,7 @@ def assert_api_response(response):
 class PicoController(cyp_base.PluginController):
     def __init__(self):
         # Run default parent tasks
-        super().__init__()
+        super().__init__("pico-tc08")
 
         # Initialize TC-08 Devices, by iteratating until none left.
         self.device_handlers = []
@@ -49,7 +47,7 @@ class PicoController(cyp_base.PluginController):
                 handler = assert_api_response(response)
                 self.device_handlers.append(handler)
 
-        logger.debug(f"Connected {len(self.device_handlers)} Pico TC-08s")
+        self.logger.info(f"Connected {len(self.device_handlers)} Pico TC-08s")
 
         # Create a PicoChannel object for each Device
         self.sources = {}
@@ -72,14 +70,14 @@ class PicoController(cyp_base.PluginController):
             interval = assert_api_response(
                 usbtc08.usb_tc08_get_minimum_interval_ms(handler))
 
-            logger.debug(
-                f"Started device {handler} with {interval}ms minimum interval")
+            self.logger.info(
+                f"Setup device {handler}, {interval}ms minimum interval")
 
     def cleanup(self):
         # Closes all devices
         for handler in self.device_handlers:
             assert_api_response(usbtc08.usb_tc08_close_unit(handler))
-        logger.debug("Closed all devices.")
+        self.logger.info("Closed all devices.")
 
 
 class PicoChannel(cyp_base.SourceObject):
