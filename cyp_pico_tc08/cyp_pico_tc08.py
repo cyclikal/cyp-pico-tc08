@@ -3,76 +3,140 @@ import ctypes
 
 from cyckei.plugins import cyp_base
 from picosdk.usbtc08 import usbtc08
+from picosdk.errors import PicoSDKCtypesError
 
 logger = logging.getLogger("cyckei")
+
+# Configuration should be loaded from a file, optionally.
+# Set default hermocouple type, must be consistent.
+thermocouple_type = "K"
+# Different thermocouple types need to be specified when reading
+thermocouple_type_map = {
+    "B": 66, "E": 69, "J": 74, "K": 75, "N": 78,
+    "R": 82, "S": 83, "T": 84, " ": 32, "X": 88,
+}
+
+
+def assert_api_response(response):
+    """
+    Function tests to a usbtc08 wrapper functions output for errors.
+    It returns the existing response if successful, and raises a
+    PicoSDKCtypesError including the last_error if the function fails.
+    """
+    if response > 0:
+        return response
+    else:
+        error = usbtc08.usb_tc08_get_last_error(response)
+        raise PicoSDKCtypesError(f"Unsuccessful API call: {error}")
+        return 0
 
 
 class PicoController(cyp_base.PluginController):
     def __init__(self):
-        self.c_handler = ctypes.c_int16()
-
-        # Initialize TC-08 Device
-        print("Open", usbtc08.usb_tc08_open_unit())
-        print("Set", usbtc08.usb_tc08_set_mains(self.c_handler, 0))
-
-        # Run default parent tasks, including get_sources
+        # Run default parent tasks
         super().__init__()
 
-    def get_sources(self):
-        """
-        Searches for available sources, and establishes source objects.
+        # Initialize TC-08 Devices, by iteratating until none left.
+        self.device_handles = []
+        while True:
+            # Using ctypes handle like PicoSDK Example
+            # Should test for speed improvements
+            handle = ctypes.c_int16()
+            response = usbtc08.usb_tc08_open_unit()
+            if response == 0:
+                break
+            else:
+                handle = assert_api_response(response)
+                self.device_handles.append(handle)
 
-        Returns
-        -------
-        Dictionary of sources in format "name": SourceObject.
-        """
+        logger.debug(f"Connected {len(self.device_handles)} Pico TC-08s")
 
-        # Find Connected Sources
-        thermocouple_type = {
-            "B": 66, "E": 69, "J": 74, "K": 75, "N": 78,
-            "R": 82, "S": 83, "T": 84, "?": 32, "X": 88,
-        }
+        # Create a PicoChannel object for each Device
+        self.sources = {}
+        for handle in self.device_handles:
+            # Set each device to reject either 50 or 60 Hz interference
+            # 1: Reject 60Hz, 2: Reject 50Hz
+            assert_api_response(usbtc08.usb_tc08_set_mains(handle, 0))
 
-        sources = {}
-        sources["Temp1"] = PicoChannel(1, thermocouple_type["K"],
-                                       self.c_handler)
-        sources["Temp2"] = PicoChannel(2, thermocouple_type["K"],
-                                       self.c_handler)
+            # Create a PicoChannel object for each channel
+            for channel in range(1, 9):
+                if channel == 0:
+                    # In case this iterates of a thermocouple in the future
+                    name = f"Temp {handle}-CJ"
+                else:
+                    name = f"Temp {handle}-{channel}"
+                self.sources[name] = PicoChannel(handle, channel,
+                                                 thermocouple_type, name)
 
-        return sources
+            # Check minimum sampling interval
+            interval = assert_api_response(
+                usbtc08.usb_tc08_get_minimum_interval_ms(handle))
+
+            # Start polling all device channels that were setup
+            interval = assert_api_response(
+                usbtc08.usb_tc08_run(handle, interval))
+
+            logger.debug(
+                f"Started device {handle} with {interval}ms minimum interval")
 
     def cleanup(self):
-        # Closes device
-        print("Close", usbtc08.usb_tc08_close_unit(self.c_handler))
+        # Closes all devices
+        for handle in self.device_handles:
+            assert_api_response(usbtc08.usb_tc08_close_unit(handle))
+        logger.debug("Closed all devices.")
 
 
 class PicoChannel(cyp_base.SourceObject):
-    def __init__(self, port, type, c_handler):
+    def __init__(self, handle, channel, type, name):
         super().__init__()
-        self.range = [0, port]
-        self.name = f"Random 0-{port}"
-        self.port = port
-        self.type = ctypes.c_int8(type)
-        self.c_handler = c_handler
+        self.name = name
+        self.channel = channel
+        # Again, should check timing using ctypes
+        self.type = ctypes.c_int8(thermocouple_type_map[type])
+        self.device = handle
+
+        # Setup individual channel for reading, with couple type
+        assert_api_response(
+            usbtc08.usb_tc08_set_channel(
+                self.device, self.channel, self.type))
 
     def read(self):
-        # Setup individual channel for reading, with couple type
-        print("Assign", usbtc08.usb_tc08_set_channel(self.c_handler, self.port,
-                                                     self.type))
-        print("Min", usbtc08.usb_tc08_get_minimum_interval_ms(self.c_handler))
+        # Read instantaneous temperature
 
-        # Read temperature
-        temp = (ctypes.c_float * 9)()
-        overflow = ctypes.c_int16(0)
+        temp = (ctypes.c_float * 2 * 15)()
+        temp_times = (ctypes.c_int32 * 15)()
+        overflow = ctypes.c_int16()
+        # USBTC08_UNITS_CENTIGRADE, USBTC08_UNITS_FAHRENHEIT,
+        # USBTC08_UNITS_KELVIN, USBTC08_UNITS_RANKINE
         units = usbtc08.USBTC08_UNITS["USBTC08_UNITS_CENTIGRADE"]
-        print("Get", usbtc08.usb_tc08_get_single(
-              self.c_handler, ctypes.byref(temp),
-              ctypes.byref(overflow), units))
+        reading = usbtc08.usb_tc08_get_temp(
+            self.device,
+            ctypes.byref(temp),
+            ctypes.byref(temp_times),
+            15,
+            ctypes.byref(overflow),
+            self.channel,
+            units,
+            1)
+        if reading == -1:
+            reading = assert_api_response(reading)
 
-        print(temp)
+        return temp
 
 
 if __name__ == "__main__":
+    # Select channel to read on direct run, 0 for all
+    channel = 1
     controller = PicoController()
-    print("Read", cyp_base.read_all(controller))
+
+    if channel == 0:
+        reading = cyp_base.read_all(controller)
+    else:
+        reading = controller.read(f"Temp 1-{channel}")
+
+    for i in reading:
+        for j in i:
+            print(f"{j}, ", end="")
+        print()
+
     controller.cleanup()
