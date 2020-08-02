@@ -1,4 +1,3 @@
-import logging
 import ctypes
 
 from cyckei.plugins import cyp_base
@@ -27,6 +26,17 @@ def assert_api_response(response):
         error = usbtc08.usb_tc08_get_last_error(response)
         raise PicoSDKCtypesError(f"Unsuccessful API call: {error}")
         return 0
+
+
+def autonomous_read_all(self):
+    print("Running Autonomously")
+    controller = PicoController()
+    results = cyp_base.read_all(controller)
+
+    for source in results:
+        print(f"{source}: {results[source]}")
+
+    controller.cleanup()
 
 
 class PicoController(cyp_base.PluginController):
@@ -109,11 +119,4 @@ class PicoChannel(cyp_base.SourceObject):
 
 
 if __name__ == "__main__":
-    controller = PicoController()
-
-    results = cyp_base.read_all(controller)
-
-    for temp in results:
-        print(temp)
-
-    controller.cleanup()
+    autonomous_read_all()
