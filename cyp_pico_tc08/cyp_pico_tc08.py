@@ -14,29 +14,27 @@ thermocouple_type_map = {
 }
 
 
-def assert_api_response(response):
+def check_api_response(response):
     """
     Function tests to a usbtc08 wrapper functions output for errors.
     It returns the existing response if successful, and raises a
     PicoSDKCtypesError including the last_error if the function fails.
     """
-    if response > 0:
-        return response
-    else:
+    if type(response) is not int:
+        raise TypeError
+    elif response < 1:
         error = usbtc08.usb_tc08_get_last_error(response)
         raise PicoSDKCtypesError(f"Unsuccessful API call: {error}")
-        return 0
+    else:
+        return response
 
 
-def autonomous_read_all(self):
-    print("Running Autonomously")
+def autonomous_read_all():
     controller = PicoController()
     results = cyp_base.read_all(controller)
-
-    for source in results:
-        print(f"{source}: {results[source]}")
-
     controller.cleanup()
+
+    return results
 
 
 class PicoController(cyp_base.PluginController):
@@ -45,27 +43,37 @@ class PicoController(cyp_base.PluginController):
         super().__init__("pico-tc08")
 
         # Initialize TC-08 Devices, by iteratating until none left.
-        self.device_handlers = []
+        self.devices = self.load_devices()
+        self.logger.debug(f"Connected {len(self.devices)} Pico TC-08s")
+
+        # Create a PicoChannel object for each Device
+        self.sources = self.load_sources()
+
+    def load_devices(self):
+        devices = []
+        handler = ctypes.c_int16()
+
         while True:
             # Using ctypes Handler like PicoSDK Example
             # Should test for speed improvements
-            handler = ctypes.c_int16()
             response = usbtc08.usb_tc08_open_unit()
             if response == 0:
+                #
                 break
             else:
-                handler = assert_api_response(response)
-                self.device_handlers.append(handler)
+                # Check if opened sucessfully, and assign handler
+                handler = check_api_response(response)
+                # Set each device to reject either 50 or 60 Hz interference
+                # 1: Reject 60Hz, 2: Reject 50Hz
+                check_api_response(usbtc08.usb_tc08_set_mains(handler, 0))
+            devices.append(handler)
 
-        self.logger.info(f"Connected {len(self.device_handlers)} Pico TC-08s")
+        return devices
 
-        # Create a PicoChannel object for each Device
-        self.sources = {}
-        for handler in self.device_handlers:
-            # Set each device to reject either 50 or 60 Hz interference
-            # 1: Reject 60Hz, 2: Reject 50Hz
-            assert_api_response(usbtc08.usb_tc08_set_mains(handler, 0))
+    def load_sources(self):
+        sources = {}
 
+        for handler in self.devices:
             # Create a PicoChannel object for each channel
             for channel in range(1, 9):
                 if channel == 0:
@@ -73,24 +81,19 @@ class PicoController(cyp_base.PluginController):
                     name = f"Temp {handler}-CJ"
                 else:
                     name = f"Temp {handler}-{channel}"
-                self.sources[name] = PicoChannel(handler, channel,
-                                                 thermocouple_type, name)
+                sources[name] = PicoChannel(handler, channel,
+                                            thermocouple_type, name)
 
-            # Check minimum sampling interval
-            interval = assert_api_response(
-                usbtc08.usb_tc08_get_minimum_interval_ms(handler))
-
-            self.logger.info(
-                f"Setup device {handler}, {interval}ms minimum interval")
+        return sources
 
     def cleanup(self):
         # Closes all devices
-        for handler in self.device_handlers:
-            assert_api_response(usbtc08.usb_tc08_close_unit(handler))
-        self.logger.info("Closed all devices.")
+        for handler in self.devices:
+            check_api_response(usbtc08.usb_tc08_close_unit(handler))
+        self.logger.debug("Closed all devices.")
 
 
-class PicoChannel(cyp_base.SourceObject):
+class PicoChannel(cyp_base.SourceHandler):
     def __init__(self, handler, channel, type, name):
         super().__init__()
         self.name = name
@@ -100,7 +103,7 @@ class PicoChannel(cyp_base.SourceObject):
         self.device = handler
 
         # Setup individual channel for reading, with couple type
-        assert_api_response(
+        check_api_response(
             usbtc08.usb_tc08_set_channel(
                 self.device, self.channel, self.type))
 
@@ -111,7 +114,7 @@ class PicoChannel(cyp_base.SourceObject):
         # USBTC08_UNITS_CENTIGRADE, USBTC08_UNITS_FAHRENHEIT,
         # USBTC08_UNITS_KELVIN, USBTC08_UNITS_RANKINE
         units = usbtc08.USBTC08_UNITS["USBTC08_UNITS_CENTIGRADE"]
-        assert_api_response(usbtc08.usb_tc08_get_single(
+        check_api_response(usbtc08.usb_tc08_get_single(
                self.device, ctypes.byref(temp),
                ctypes.byref(overflow), units))
 
@@ -119,4 +122,7 @@ class PicoChannel(cyp_base.SourceObject):
 
 
 if __name__ == "__main__":
-    autonomous_read_all()
+    results = autonomous_read_all()
+
+    for source in results:
+        print(f"{source}: {results[source]}")
