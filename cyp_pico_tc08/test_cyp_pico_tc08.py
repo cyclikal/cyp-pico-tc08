@@ -1,5 +1,5 @@
 import unittest
-from cyp_pico_tc08 import cyp_pico_tc08
+import cyp_pico_tc08
 from picosdk.errors import PicoSDKCtypesError
 
 
@@ -61,3 +61,7 @@ class TestPicoController(unittest.TestCase):
 
 class TestProfile(unittest.TestCase):
     pass
+
+
+if __name__ == '__main__':
+    unittest.main()

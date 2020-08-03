@@ -37,6 +37,14 @@ def autonomous_read_all():
     return results
 
 
+def autonomous_read(channel="Temp 1-1"):
+    controller = PicoController()
+    results = controller.read(channel)
+    controller.cleanup()
+
+    return results
+
+
 class PicoController(cyp_base.PluginController):
     def __init__(self):
         # Run default parent tasks
@@ -58,7 +66,7 @@ class PicoController(cyp_base.PluginController):
             # Should test for speed improvements
             response = usbtc08.usb_tc08_open_unit()
             if response == 0:
-                #
+                # Returns zero when no unopened units left
                 break
             else:
                 # Check if opened sucessfully, and assign handler
