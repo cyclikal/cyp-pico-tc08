@@ -52,7 +52,7 @@ class PicoController(cyp_base.PluginController):
 
         # Initialize TC-08 Devices, by iteratating until none left.
         self.devices = self.load_devices()
-        self.logger.debug(f"Connected {len(self.devices)} Pico TC-08s")
+        self.logger.info(f"Connected {len(self.devices)} Pico TC-08s")
 
         # Create a PicoChannel object for each Device
         self.sources = self.load_sources()
@@ -98,7 +98,7 @@ class PicoController(cyp_base.PluginController):
         # Closes all devices
         for handler in self.devices:
             check_api_response(usbtc08.usb_tc08_close_unit(handler))
-        self.logger.debug("Closed all devices.")
+        self.logger.info("Closed all devices.")
 
 
 class PicoChannel(cyp_base.SourceHandler):
