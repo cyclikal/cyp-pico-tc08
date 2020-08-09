@@ -1,4 +1,5 @@
 import ctypes
+import os.path
 
 from cyckei.plugins import cyp_base
 from picosdk.usbtc08 import usbtc08
@@ -30,25 +31,18 @@ def check_api_response(response):
 
 
 def autonomous_read_all():
-    controller = PicoController()
+    controller = PluginController()
     results = cyp_base.read_all(controller)
     controller.cleanup()
 
     return results
 
 
-def autonomous_read(channel="Temp 1-1"):
-    controller = PicoController()
-    results = controller.read(channel)
-    controller.cleanup()
-
-    return results
-
-
-class PicoController(cyp_base.PluginController):
-    def __init__(self):
+class PluginController(cyp_base.BaseController):
+    def __init__(self, sources):
         # Run default parent tasks
-        super().__init__("pico-tc08")
+        base_path = os.path.join(os.path.dirname(__file__), "..")
+        super().__init__("pico-tc08", base_path)
 
         # Initialize TC-08 Devices, by iteratating until none left.
         self.devices = self.load_devices()
@@ -60,6 +54,8 @@ class PicoController(cyp_base.PluginController):
     def load_devices(self):
         devices = []
         handler = ctypes.c_int16()
+
+        print(self.config["channels"]["Temp 1"][0])
 
         while True:
             # Using ctypes Handler like PicoSDK Example
@@ -89,8 +85,8 @@ class PicoController(cyp_base.PluginController):
                     name = f"Temp {handler}-CJ"
                 else:
                     name = f"Temp {handler}-{channel}"
-                sources[name] = PicoChannel(handler, channel,
-                                            thermocouple_type, name)
+                sources[name] = PluginSource(handler, channel,
+                                             thermocouple_type, name)
 
         return sources
 
@@ -101,7 +97,7 @@ class PicoController(cyp_base.PluginController):
         self.logger.info("Closed all devices.")
 
 
-class PicoChannel(cyp_base.SourceHandler):
+class PluginSource(cyp_base.BaseSource):
     def __init__(self, handler, channel, type, name):
         super().__init__()
         self.name = name
