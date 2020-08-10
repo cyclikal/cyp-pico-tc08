@@ -1,5 +1,4 @@
 import ctypes
-import os.path
 
 from cyckei.plugins import cyp_base
 from picosdk.usbtc08 import usbtc08
@@ -41,28 +40,41 @@ def autonomous_read_all():
 class PluginController(cyp_base.BaseController):
     def __init__(self, sources):
         # Run default parent tasks
-        base_path = os.path.join(os.path.dirname(__file__), "..")
-        super().__init__("pico-tc08", base_path)
+        super().__init__(
+            "pico-tc08",
+            "Gets temperature data from Pico-TC08 thermocouples."
+        )
 
         # Initialize TC-08 Devices, by iteratating until none left.
-        self.devices = self.load_devices()
-        self.logger.info(f"Connected {len(self.devices)} Pico TC-08s")
+        self.devices = self.load_devices(sources)
+        self.logger.info(f"Connected {len(self.devices)} Pico TC-08(s)")
 
         # Create a PicoChannel object for each Device
         self.sources = self.load_sources()
 
-    def load_devices(self):
+        # List of names to declare to Cyckei
+        self.names = []
+        for source in self.sources:
+            self.names.append(str(source))
+
+    def load_devices(self, sources):
         devices = []
         handler = ctypes.c_int16()
 
-        print(self.config["channels"]["Temp 1"][0])
+        # Get list if ports
+        device_ports = []
+        for source in sources:
+            device_ports.append(source["port"])
+        device_ports.sort()
 
-        while True:
+        for device in sources:
             # Using ctypes Handler like PicoSDK Example
-            # Should test for speed improvements
             response = usbtc08.usb_tc08_open_unit()
             if response == 0:
                 # Returns zero when no unopened units left
+                break
+            if response not in device_ports:
+                check_api_response(usbtc08.usb_tc08_close_unit(handler))
                 break
             else:
                 # Check if opened sucessfully, and assign handler
@@ -81,7 +93,7 @@ class PluginController(cyp_base.BaseController):
             # Create a PicoChannel object for each channel
             for channel in range(1, 9):
                 if channel == 0:
-                    # In case this iterates of a thermocouple in the future
+                    # In case this iterates over a cold junction in the future
                     name = f"Temp {handler}-CJ"
                 else:
                     name = f"Temp {handler}-{channel}"
