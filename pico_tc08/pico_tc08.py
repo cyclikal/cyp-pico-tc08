@@ -1,4 +1,5 @@
 import ctypes
+import json
 
 from cyckei.plugins import cyp_base
 from picosdk.usbtc08 import usbtc08
@@ -13,6 +14,21 @@ thermocouple_type_map = {
     "R": 82, "S": 83, "T": 84, " ": 32, "X": 88,
 }
 
+default_config = json.loads(
+    """
+    {
+        "name": "pico_tc08",
+        "enabled": true,
+        "sources": [
+            {
+              "port": 1,
+              "meta": ["K", "K", "K", "K", "K", "K", "K", "K"]
+            }
+        ]
+    }
+    """
+)
+
 
 def check_api_response(response):
     """
@@ -24,7 +40,7 @@ def check_api_response(response):
         raise TypeError
     elif response < 1:
         error = usbtc08.usb_tc08_get_last_error(response)
-        raise PicoSDKCtypesError(f"Unsuccessful API call: {error}")
+        raise PicoSDKCtypesError("Unsuccessful API call:", error)
     else:
         return response
 
@@ -138,7 +154,6 @@ class PluginSource(cyp_base.BaseSource):
 
 
 if __name__ == "__main__":
-    results = autonomous_read_all()
-
-    for source in results:
-        print(f"{source}: {results[source]}")
+    sources = default_config["sources"]
+    controller = PluginController(sources)
+    print(cyp_base.read_all(controller))
