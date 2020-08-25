@@ -6,7 +6,7 @@ shrt = "Cyckei Plugin Package, Reads Temperature from Pico TC-08 Thermocouples"
 
 setuptools.setup(
     name="cyp-pico-tc08",
-    version="0.1.dev1",
+    version="1.0",
     author="Gabriel Ewig",
     author_email="gabriel@cyclikal.com",
     description=shrt,
